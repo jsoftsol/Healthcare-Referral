@@ -1,0 +1,148 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare_app
+    restart: unless-stopped
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+    environment:
+      APP_ENV: local
+      APP_KEY: ${APP_KEY}
+      DB_HOST: mysql
+      DB_DATABASE: healthcare_referral
+      DB_USERNAME: healthcare
+      DB_PASSWORD: secret
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: redis
+      CACHE_DRIVER: redis
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        php artisan migrate --force &&
+        php artisan db:seed --force &&
+        php-fpm
+      "
+    networks:
+      - healthcare_net
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare_worker
+    restart: unless-stopped
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+    environment:
+      APP_ENV: local
+      APP_KEY: ${APP_KEY}
+      DB_HOST: mysql
+      DB_DATABASE: healthcare_referral
+      DB_USERNAME: healthcare
+      DB_PASSWORD: secret
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: redis
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+    command: php artisan queue:work --queue=triage,escalations,notifications,default --tries=3 --sleep=3
+    networks:
+      - healthcare_net
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare_scheduler
+    restart: unless-stopped
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+    environment:
+      APP_ENV: local
+      APP_KEY: ${APP_KEY}
+      DB_HOST: mysql
+      DB_DATABASE: healthcare_referral
+      DB_USERNAME: healthcare
+      DB_PASSWORD: secret
+      REDIS_HOST: redis
+      QUEUE_CONNECTION: redis
+      CACHE_DRIVER: redis
+    depends_on:
+      app:
+        condition: service_started
+    command: sh -c "while true; do php artisan schedule:run; sleep 60; done"
+    networks:
+      - healthcare_net
+
+  mysql:
+    image: mysql:8.0
+    container_name: healthcare_mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: healthcare_referral
+      MYSQL_USER: healthcare
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: rootsecret
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootsecret"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - healthcare_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: healthcare_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "127.0.0.1", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - healthcare_net
+
+  nginx:
+    image: nginx:alpine
+    container_name: healthcare_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      app:
+        condition: service_started
+    networks:
+      - healthcare_net
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  healthcare_net:
+    driver: bridge
