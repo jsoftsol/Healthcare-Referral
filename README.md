@@ -3,7 +3,7 @@
 **Framework:** Laravel 12  
 **Runtime:** PHP 8.5.3
 
-A production-grade Laravel backend for managing patient referrals between hospitals and clinical staff, with AI-assisted triage, real-time notifications, audit logging, and role-based access control.
+A production-grade Laravel backend for managing patient referrals between hospitals and clinical staff, with AI-assisted triage, event-driven in-app notifications, audit logging, and role-based access control.
 
 ---
 
@@ -26,7 +26,7 @@ A production-grade Laravel backend for managing patient referrals between hospit
 
 ```bash
 # 1. Clone and enter directory
-git clone <repo-url> && cd healthcare-referral
+git clone https://github.com/jsoftsol/Healthcare-Referral.git && cd Healthcare-Referral
 
 # 2. Copy environment file
 cp .env.example .env
@@ -204,7 +204,7 @@ Laravel 12 removes the legacy `app/Exceptions/Handler.php` requirement when exce
 
 ### Role-Based Access
 
-The `RequireRole` middleware enforces access at the route level:
+The `CheckRole` middleware (aliased `role`) enforces access at the route level:
 - `role:admin` — admin-only endpoints
 - `role:admin,doctor,coordinator` — all authenticated staff
 
@@ -212,40 +212,113 @@ The `RequireRole` middleware enforces access at the route level:
 
 ## API Reference
 
+Base path for every route below: `/api/v1`. All 11 endpoints follow the response envelope described at the end of this section.
+
 ### Authentication
 
-```
-POST /api/v1/auth/login
-POST /api/v1/auth/refresh
-POST /api/v1/auth/logout
-```
+#### `POST /auth/login` — public
 
-### Hospital (API Key Auth — X-Hospital-Api-Key header)
+| Field | Type | Rules |
+|---|---|---|
+| `email` | string | required, valid email |
+| `password` | string | required |
 
-```
-POST /api/v1/hospital/referrals          Submit a referral
-```
+Response `data`: `staff {id, name, email, role, department}`, `access_token`, `refresh_token`, `token_type`, `expires_at`.
 
-### Admin (Bearer token, admin role)
+#### `POST /auth/refresh` — `Authorization: Bearer <access_token>`
 
-```
-GET    /api/v1/admin/referrals                        List all (filterable, paginated)
-GET    /api/v1/admin/referrals/{id}                   View with full audit history
-PATCH  /api/v1/admin/referrals/{id}/assign            Assign to staff
-PATCH  /api/v1/admin/referrals/{id}/cancel            Cancel with reason
-GET    /api/v1/admin/reports                          Aggregated statistics
-```
+No body. Revokes the current access token and issues a new one. Response `data`: `access_token`, `expires_at`.
 
-**Filters for list endpoint:** `status`, `urgency`, `department`, `date_from`, `date_to`, `per_page`
+#### `POST /auth/logout` — `Authorization: Bearer <access_token>`
 
-**Report filters:** `date_from`, `date_to`
+No body. Revokes all tokens for the authenticated staff member (single active session). Response `data`: `null`.
 
-### Staff (Bearer token, any staff role)
+### Hospital — `X-Hospital-Api-Key` header
 
-```
-GET    /api/v1/staff/referrals                         My assigned referrals
-PATCH  /api/v1/staff/notifications/{id}/acknowledge    Mark notification as read
-```
+#### `POST /hospital/referrals`
+
+| Field | Type | Rules |
+|---|---|---|
+| `patient.first_name` | string | required, max 100 |
+| `patient.last_name` | string | required, max 100 |
+| `patient.date_of_birth` | date | required, must be before today |
+| `patient.national_id` | string | required, max 50 |
+| `patient.insurance_number` | string | required, max 50 |
+| `urgency_level` | string enum | required — `routine`, `urgent`, `emergency` |
+| `icd10_codes` | array\<string\> | required, min 1 item, each matching `^[A-Z][0-9]{2}(\.[0-9A-Z]{1,4})?$` (e.g. `I21`, `I21.0`) |
+| `clinical_notes` | string | required, min 10 chars |
+| `department` | string \| null | optional, max 100 |
+
+Idempotent: resubmitting the same `(hospital_id, patient_id, icd10_codes, urgency_level)` combination returns the existing referral instead of creating a duplicate. Response `data`: `ReferralResource` (see shape below), HTTP 201.
+
+### Admin — `Authorization: Bearer <token>`, `role:admin`
+
+#### `GET /admin/referrals`
+
+| Query param | Type | Rules |
+|---|---|---|
+| `status` | string enum | optional — `pending`, `triaged`, `assigned`, `acknowledged`, `in_progress`, `completed`, `cancelled`, `escalated` |
+| `urgency` | string enum | optional — `routine`, `urgent`, `emergency` |
+| `department` | string | optional, max 100 |
+| `date_from` | date | optional |
+| `date_to` | date | optional, must be on/after `date_from` |
+| `per_page` | integer | optional, 1–100 (default 20) |
+
+Response `data`: paginated collection of `ReferralResource`.
+
+#### `GET /admin/referrals/{id}`
+
+No params. Returns a single `ReferralResource` with `patient`, `hospital`, `assigned_staff`, and full `audit_history` loaded.
+
+#### `PATCH /admin/referrals/{id}/assign`
+
+| Field | Type | Rules |
+|---|---|---|
+| `staff_id` | integer | required, must exist in `staff` table |
+
+Valid only from `triaged` or `escalated` status. Response `data`: updated `ReferralResource`.
+
+#### `PATCH /admin/referrals/{id}/cancel`
+
+| Field | Type | Rules |
+|---|---|---|
+| `reason` | string | required, 10–500 chars |
+
+Valid from any non-final status. Response `data`: updated `ReferralResource`.
+
+#### `GET /admin/reports`
+
+| Query param | Type | Rules |
+|---|---|---|
+| `date_from` | date | optional (default: 30 days ago) |
+| `date_to` | date | optional (default: today) |
+
+Response `data`: `period {from, to}`, `total_referrals`, `referrals_per_day` (map of date → count), `average_ai_confidence`, `escalation_rate`, `cancellation_rate`, `escalated_count`, `cancelled_count`.
+
+### Staff — `Authorization: Bearer <token>`, `role:admin,doctor,coordinator`
+
+#### `GET /staff/referrals`
+
+No params. Returns the authenticated staff member's assigned referrals, paginated (20/page). Response `data`: paginated collection of `ReferralResource`.
+
+#### `PATCH /staff/notifications/{id}/acknowledge`
+
+No body. Marks the notification as read (only if it belongs to the authenticated staff member — 404 otherwise); this is the trigger that satisfies "acknowledged" for emergency escalation. Response `data`: `NotificationResource {id, message, channel, referral_id, sent_at, read_at, is_read}`.
+
+### `ReferralResource` shape
+
+Returned by every referral endpoint above.
+
+| Field | Notes |
+|---|---|
+| `id`, `status`, `urgency_level`, `department`, `icd10_codes` | core referral fields |
+| `hospital` | `{id, name, code}` |
+| `assigned_staff` | `{id, name, department}` — only when loaded |
+| `ai_triage` | `{suggested_department, confidence_score, processed_at}` — only once AI triage has run |
+| `cancellation_reason` | null unless cancelled |
+| `created_at`, `updated_at` | ISO 8601 |
+| `patient` | `{id, first_name, last_name, date_of_birth, insurance_number}` — decrypted on read, only when loaded |
+| `audit_history` | array of `{id, action, field_name, old_value, new_value, metadata, performed_by, created_at}` — only when loaded |
 
 ### Consistent Response Envelope
 
