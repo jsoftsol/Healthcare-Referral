@@ -17,6 +17,7 @@ Durable project context and standing instructions (why certain scope was cut, gi
 @.claude/memory/project-origin.md
 @.claude/memory/history-rewrite.md
 @.claude/memory/no-coauthor.md
+@.claude/memory/session-memory-verification.md
 
 Add new durable context as a new file in `.claude/memory/` and reference it above, rather than writing it to the global memory store. See `.claude/memory/README.md` for the index.
 
