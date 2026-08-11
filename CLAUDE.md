@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Laravel 12 / PHP 8.5 API backend for managing patient referrals between hospitals and clinical staff, with AI-assisted triage, event-driven notifications, and audit logging. No frontend beyond the default Vite/Tailwind scaffold — this is an API-only system (`routes/api.php`, prefixed globally with `/api/v1`).
+Laravel 12 / PHP 8.5 API backend for managing patient referrals between hospitals and clinical staff, with AI-assisted triage, event-driven notifications, and audit logging. This is an API-only system (`routes/api.php`, prefixed globally with `/api/v1`) — the only page at `/` is a static project-overview landing page (`resources/views/welcome.blade.php`), not a functional frontend.
 
 ## Documentation map
 
@@ -18,6 +18,7 @@ Durable project context and standing instructions (why certain scope was cut, gi
 @.claude/memory/history-rewrite.md
 @.claude/memory/no-coauthor.md
 @.claude/memory/session-memory-verification.md
+@.claude/memory/welcome-page-portfolio-thumbnail.md
 
 Add new durable context as a new file in `.claude/memory/` and reference it above, rather than writing it to the global memory store. See `.claude/memory/README.md` for the index.
 
