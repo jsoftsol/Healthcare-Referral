@@ -10,6 +10,16 @@ Laravel 12 / PHP 8.5 API backend for managing patient referrals between hospital
 
 This file covers *how to build and navigate the code*. Product-level detail (workflows, data model, API contract, security requirements, deferred scope, open questions) lives in **`PRD.md`** at the repo root — read it on demand rather than assuming its content is already in context, e.g. before: designing a new endpoint or workflow, changing the referral status machine, touching PII/encryption handling, or deciding whether something is a genuine gap vs. deliberately deferred scope (PRD §9). Don't duplicate PRD content back into this file — link to it instead, to keep this file's always-loaded footprint small.
 
+## Session memory
+
+Durable project context and standing instructions (why certain scope was cut, git history notes, commit conventions) live in `.claude/memory/` in this repo — not in the global `~/.claude` memory store, and gitignored so they stay local-only — but still load automatically here via these imports:
+
+@.claude/memory/project-origin.md
+@.claude/memory/history-rewrite.md
+@.claude/memory/no-coauthor.md
+
+Add new durable context as a new file in `.claude/memory/` and reference it above, rather than writing it to the global memory store. See `.claude/memory/README.md` for the index.
+
 ## Commands
 
 ```bash

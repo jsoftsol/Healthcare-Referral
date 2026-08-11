@@ -1,5 +1,6 @@
 *.log
 .DS_Store
+.claude/memory
 .env
 .env.backup
 .env.production
