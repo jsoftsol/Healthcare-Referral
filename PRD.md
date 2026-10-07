@@ -146,7 +146,7 @@ PATCH  /api/v1/staff/notifications/{id}/acknowledge        [auth:sanctum, role:a
 
 | Concern | Implementation |
 |---|---|
-| **Queue reliability** | 4 named queues (`triage`, `escalations`, `notifications`, `default`) with per-job retry/backoff tuned to failure mode (see PRD §3.2, `CLAUDE.md`). |
+| **Queue reliability** | 4 named queues (`triage`, `escalations`, `notifications`, `default`) with per-job retry/backoff tuned to failure mode (see PRD §3.2). |
 | **Idempotency** | Hospital referral submission is idempotent via `submitted_hash`; safe to retry on the hospital's side without creating duplicates. |
 | **Consistency** | Referral + patient creation wrapped in a DB transaction (`SubmitReferralAction`). |
 | **API versioning** | All routes under `/api/v1`; future breaking changes get a new prefix/route file rather than breaking existing consumers. |
